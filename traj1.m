@@ -78,4 +78,4 @@ hold on;
 plot(xc(1, 1: length(T)), xc(2, 1: length(T)), 'm');
 
 figure(2);
-plot(T, d);
+plot(T, d);% good job.
