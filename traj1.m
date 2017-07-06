@@ -25,6 +25,7 @@ wr = (2*pi /60) * 80 * ones(1, length(T)); % 25 rpm
 wl = (2*pi /60) * 77 * ones(1, length(T)); % 24 rpm
 
 
+
 %wr = (2*pi /60) * [25 * ones(1, length(T)/2), 23 * ones(1, length(T)/2)];
 %wl = (2*pi /60) * [24 * ones(1, length(T)/2), 25 * ones(1, length(T)/2)];
 
