@@ -80,14 +80,64 @@
 
 ********************************************************************************/
 #define F_CPU 14745600
+#define SIZE 2
+#define DIVIDER 1024
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-volatile unsigned long int ShaftCountLeft = 0; //to keep track of left position encoder
-volatile unsigned long int ShaftCountRight = 0; //to keep track of right position encoder
+volatile unsigned long int ShaftCountLeft = 0, timLeft = 0; //to keep track of left position encoder
+volatile unsigned long int ShaftCountRight = 0, timRight = 0; //to keep track of right position encoder
 volatile unsigned int Degrees; //to accept angle in degrees for turning
 unsigned char data, datal, datar; //to store received data from UDR1
+
+
+void forward_control(unsigned char ref)
+{
+	unsigned long val[SIZE], var[SIZE];
+	double lvel = 0;
+	double rvel = 0;
+	char change = 0;
+	
+	for(int i = 0; i < SIZE; i++)
+	{
+		val[i] = 0;
+		var[i] = 0;
+	}
+	
+	velocity (ref, ref); // 195 and 178 gave equal speeds
+	forward();
+	
+	while(1)
+	{
+		_delay_ms(50);
+		
+		val[0] = val[1];
+		var[0] = var[1];
+		
+		cli();
+		
+		lvel = F_CPU / (timLeft * DIVIDER);
+		rvel = F_CPU / (timRight * DIVIDER);
+		
+		sei();
+		
+		if(rvel < lvel)
+		change++;
+		if(rvel > lvel)
+		change--;
+		
+		velocity(ref, ref + change);
+		
+		val[1] = lvel - (unsigned long) lvel > 0.5 ? ((unsigned long) lvel + 1) : (unsigned long) lvel ;
+		var[1] = rvel - (unsigned long) rvel > 0.5 ? ((unsigned long) rvel + 1) : (unsigned long) rvel ;
+		
+		datal = (unsigned char) (val[1] + val[0]);
+		datar = (unsigned char) (var[1] + var[0]);
+		
+	}
+}
+
 
 //Function to configure ports to enable robot's motion
 void motion_pin_config (void)
@@ -137,18 +187,35 @@ void right_position_encoder_interrupt_init (void) //Interrupt 5 enable
 }
 
 //ISR for right position encoder
+/*
 ISR(INT5_vect)
 {
 	ShaftCountRight++;  //increment right shaft position count
 }
+*/
+
+
+ISR(INT5_vect)
+{
+	timRight = TCNT3;  
+	TCNT3 = 0x00;
+}
 
 
 //ISR for left position encoder
+/*
 ISR(INT4_vect)
 {
 	ShaftCountLeft++;  //increment left shaft position count
 }
+*/
 
+
+ISR(INT4_vect)
+{
+	timLeft = TCNT1;  
+	TCNT1 = 0x00;
+}
 
 //Function used for setting motor's direction
 void motion_set (unsigned char Direction)
@@ -206,7 +273,6 @@ void stop (void)
 {
 	motion_set(0x00);
 }
-
 
 //Function used for turning robot by specified degrees
 void angle_rotate(unsigned int Degrees)
@@ -272,15 +338,12 @@ void left_degrees(unsigned int Degrees)
 	angle_rotate(Degrees);
 }
 
-
-
 void right_degrees(unsigned int Degrees)
 {
 	// 88 pulses for 360 degrees rotation 4.090 degrees per count
 	right(); //Turn right
 	angle_rotate(Degrees);
 }
-
 
 void soft_left_degrees(unsigned int Degrees)
 {
@@ -314,8 +377,6 @@ void soft_right_2_degrees(unsigned int Degrees)
 	angle_rotate(Degrees);
 }
 
-
-
 void timer5_init()
 {
 	TCCR5B = 0x00;	//Stop
@@ -334,6 +395,21 @@ void timer5_init()
 	TCCR5B = 0x0B;	//WGM12=1; CS12=0, CS11=1, CS10=1 (Prescaler=64)
 }
 
+void timer1_init()
+{
+	TCCR1B = 0x00;	//Stop
+	TCCR1A = 0x00;
+	TCCR1B = 0x05;  //Clk = basic clk / 1024
+	
+}
+
+void timer3_init()
+{
+	TCCR3B = 0x00;	//Stop
+	TCCR3A = 0x00;
+	TCCR3B = 0x05;
+	
+}
 void uart0_init(void)
 {
 	UCSR0B = 0x00; //disable while setting baud rate
@@ -345,29 +421,29 @@ void uart0_init(void)
 	UCSR0B = 0x98;
 }
 
-
 SIGNAL(SIG_USART0_RECV) 		// ISR for receive complete interrupt
 {
 	data = UDR0; 				//making copy of data from UDR0 in 'data' variable
 
 	UDR0 = data; 				//echo data back to PC
 
-	if(data == 0x38) //ASCII value of 8
+	if(data == 'w') //ASCII value of w
 	{
-		PORTA=0x06;  //forward
+		//PORTA=0x06;  //forward
+		forward_control(180);
 	}
 
-	if(data == 0x32) //ASCII value of 2
+	if(data == 'x') //ASCII value of x
 	{
-		PORTA=0x09; //back
+		PORTA=0x09; //back 
 	}
 
-	if(data == 0x34) //ASCII value of 4
+	if(data == 'a') //ASCII value of a
 	{
 		PORTA=0x05;  //left
 	}
 
-	if(data == 0x36) //ASCII value of 6
+	if(data == 'd') //ASCII value of d
 	{
 		PORTA=0x0A; //right
 	}
@@ -382,7 +458,7 @@ SIGNAL(SIG_USART0_RECV) 		// ISR for receive complete interrupt
 		PORTA=0x02; //right
 	}
 	
-	if(data == 0x35) //ASCII value of 5
+	if(data == 's') //ASCII value of s
 	{
 		PORTA=0x00; //stop
 	}
@@ -412,38 +488,95 @@ void init_devices()
 int main(void)
 {
 	init_devices();
-	int sec = 0;
-	unsigned long val = 0, var = 0;
+	
+	/*
+	unsigned long val[SIZE], var[SIZE];
+	double lvel = 0;
+	double rvel = 0;
+	unsigned char ref = 180;
+	char change = 0;
+	
+	for(int i = 0; i < SIZE; i++)
+	{
+		val[i] = 0;
+		var[i] = 0;
+	}
+	*/
+	timer1_init();
+	timer3_init();
+	
+	while(1);
+	
+	//velocity (ref, ref); // 195 and 178 gave equal speeds
+	//forward();
+	
+	/*
 	while(1)
 	{
-		_delay_ms(1000);
-		sec++;
+		_delay_ms(1000);	
 		
-		velocity (195, 195);
-		forward();
+		val[0] = val[1];
+		var[0] = var[1];
 		
-		while ( !( UCSR0A & (1<<UDRE0)) )
-		;
-		/* Put data into buffer, sends the data */
-		val = ShaftCountLeft;
-		val /= 30;
+		val[1] = ShaftCountLeft;
+		var[1] = ShaftCountRight;
 		
-		val  = val * 60 / sec ;
-		datal = (unsigned char) val;
+		cli();
+		
+		ShaftCountLeft = 0;
+		ShaftCountRight = 0;
+		
+		sei();
+		
+		datal = (unsigned char) (val[1] + val[0]); // rpm = no of shaft counts per second * no of rotations per shaft count * no of seconds per minute
+												   // rpm = no of shaft counts per second * (1/30) * 60 = no of shaft counts per second * 2
+												   // the average of the 2 most recent readings are taken therefore the 2's cancel and the 
+												   // rpm is just the sum of the two most recent shaft counts
+		datar = (unsigned char) (var[1] + var[0]);
+		
+		while ( !( UCSR0A & (1<<UDRE0)) );
+		// Put data into buffer, sends the data 
 			
 		UDR0 = datal;
 		
 		while ( !( UCSR0A & (1<<UDRE0)) );
-		
-		var = ShaftCountRight;
-		var /= 30;
-		
-		var  = var * 60 / sec ;
-		datar = (unsigned char) var;
-		
+			
 		UDR0 = datar;
 		
 		while ( !( UCSR0A & (1<<UDRE0)) );
-		UDR0 = 0;
+		
+		UDR0 = '\n';
 	}
+	
+	*/
+	
+	/*while(1)
+	{
+		//_delay_ms(100);
+		
+		val[0] = val[1];
+		var[0] = var[1];
+		
+		cli();
+		
+		lvel = F_CPU / (timLeft * DIVIDER);
+		rvel = F_CPU / (timRight * DIVIDER);
+		
+		sei();
+		
+		if(rvel < lvel)
+			change++;
+		if(rvel > lvel)
+			change--;
+			
+		velocity(ref, ref + change);
+		
+		val[1] = lvel - (unsigned long) lvel > 0.5 ? ((unsigned long) lvel + 1) : (unsigned long) lvel ;
+		var[1] = rvel - (unsigned long) rvel > 0.5 ? ((unsigned long) rvel + 1) : (unsigned long) rvel ;
+		
+		datal = (unsigned char) (val[1] + val[0]);
+		datar = (unsigned char) (var[1] + var[0]);
+		
+	}
+	*/
 }

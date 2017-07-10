@@ -35,6 +35,8 @@ SUBDIRS :=
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
+../comm.c \
+../motion\ control.c \
 ../speed\ measurement.c
 
 
@@ -45,18 +47,26 @@ ASM_SRCS +=
 
 
 OBJS +=  \
+comm.o \
+motion\ control.o \
 speed\ measurement.o
 
 
 OBJS_AS_ARGS +=  \
+comm.o \
+"motion control.o" \
 "speed measurement.o"
 
 
 C_DEPS +=  \
+comm.d \
+motion\ control.d \
 speed\ measurement.d
 
 
 C_DEPS_AS_ARGS +=  \
+comm.d \
+"motion control.d" \
 "speed measurement.d"
 
 
@@ -69,6 +79,18 @@ ADDITIONAL_DEPENDENCIES:=
 OUTPUT_FILE_DEP:= ./makedep.mk
 
 # AVR32/GNU C Compiler
+./comm.o: .././comm.c
+	@echo Building file: $<
+	@echo Invoking: AVR/GNU C Compiler : (AVR_8_bit_GNU_Toolchain_3.4.0_663) 4.6.2
+	$(QUOTE)C:\Program Files (x86)\Atmel\Atmel Studio 6.0\extensions\Atmel\AVRGCC\3.4.0.65\AVRToolchain\bin\avr-gcc.exe$(QUOTE) -funsigned-char -funsigned-bitfields -O1 -fpack-struct -fshort-enums -g2 -Wall -c -std=gnu99 -MD -MP -MF "$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -MT"$(@:%.o=%.o)"  -mmcu=atmega2560   -o"$@" "$<" 
+	@echo Finished building: $<
+
+./motion\ control.o: .././motion\ control.c
+	@echo Building file: $<
+	@echo Invoking: AVR/GNU C Compiler : (AVR_8_bit_GNU_Toolchain_3.4.0_663) 4.6.2
+	$(QUOTE)C:\Program Files (x86)\Atmel\Atmel Studio 6.0\extensions\Atmel\AVRGCC\3.4.0.65\AVRToolchain\bin\avr-gcc.exe$(QUOTE) -funsigned-char -funsigned-bitfields -O1 -fpack-struct -fshort-enums -g2 -Wall -c -std=gnu99 -MD -MP -MF "$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -MT"$(@:%.o=%.o)"  -mmcu=atmega2560   -o"$@" "$<" 
+	@echo Finished building: $<
+
 ./speed\ measurement.o: .././speed\ measurement.c
 	@echo Building file: $<
 	@echo Invoking: AVR/GNU C Compiler : (AVR_8_bit_GNU_Toolchain_3.4.0_663) 4.6.2
