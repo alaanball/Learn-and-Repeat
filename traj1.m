@@ -22,7 +22,7 @@ T = t0: dt: tfin;
 % in cm per second
 
 wr = (2*pi /60) * 80 * ones(1, length(T)); % 25 rpm
-wl = (2*pi /60) * 77 * ones(1, length(T)); % 24 rpm
+wl = (2*pi /60) * 78 * ones(1, length(T)); % 24 rpm
 
 
 
