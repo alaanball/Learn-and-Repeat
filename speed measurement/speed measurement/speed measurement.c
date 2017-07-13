@@ -89,7 +89,11 @@
 volatile unsigned long int ShaftCountLeft = 0, timLeft = 0; //to keep track of left position encoder
 volatile unsigned long int ShaftCountRight = 0, timRight = 0; //to keep track of right position encoder
 volatile unsigned int Degrees; //to accept angle in degrees for turning
-unsigned char data, datal, datar; //to store received data from UDR1
+unsigned char data, datal, datar, recv_commands[128] = {0}; //to store received data from UDR1
+unsigned int recv_counter = 0;
+unsigned long recv_times[128] = {0};
+volatile int learn_flag = 0;
+volatile int repeat_flag = 0, cend_flag = 0;
 
 
 void forward_control(unsigned char ref)
@@ -108,7 +112,7 @@ void forward_control(unsigned char ref)
 	velocity (ref, ref); // 195 and 178 gave equal speeds
 	forward();
 	
-	while(1)
+	while((cend_flag == 0) || (data == 'w'))
 	{
 		_delay_ms(50);
 		
@@ -398,18 +402,25 @@ void timer5_init()
 void timer1_init()
 {
 	TCCR1B = 0x00;	//Stop
-	TCCR1A = 0x00;
+	TCCR1A = 0x00;	// no pwm, etc.
 	TCCR1B = 0x05;  //Clk = basic clk / 1024
 	
 }
 
 void timer3_init()
 {
-	TCCR3B = 0x00;	//Stop
+	TCCR3B = 0x00;	
 	TCCR3A = 0x00;
 	TCCR3B = 0x05;
 	
 }
+
+void timer4_init()
+{
+	TCCR4B = 0x00;	
+	TCCR4A = 0x00;
+}
+
 void uart0_init(void)
 {
 	UCSR0B = 0x00; //disable while setting baud rate
@@ -423,10 +434,33 @@ void uart0_init(void)
 
 SIGNAL(SIG_USART0_RECV) 		// ISR for receive complete interrupt
 {
-	data = UDR0; 				//making copy of data from UDR0 in 'data' variable
-
-	UDR0 = data; 				//echo data back to PC
-
+	data = UDR0;	//making copy of data from UDR0 in 'data' variable
+	
+	if(learn_flag == 1 && data != 1)
+	{
+		
+		recv_commands[recv_counter] = data;
+	
+		recv_times[recv_counter] = TCNT4;
+		
+		recv_counter++;
+		UDR0 = 'p';
+	}
+	
+	if(data == '1')
+	{
+		
+		learn_flag = 0;	
+		UDR0 = 'n';
+	}		
+		
+	if(data == '2')
+	{
+		
+		repeat_flag = 1;
+		UDR0 = 'm';
+	}	
+	
 	if(data == 'w') //ASCII value of w
 	{
 		//PORTA=0x06;  //forward
@@ -489,94 +523,76 @@ int main(void)
 {
 	init_devices();
 	
-	/*
-	unsigned long val[SIZE], var[SIZE];
-	double lvel = 0;
-	double rvel = 0;
-	unsigned char ref = 180;
-	char change = 0;
-	
-	for(int i = 0; i < SIZE; i++)
-	{
-		val[i] = 0;
-		var[i] = 0;
-	}
-	*/
 	timer1_init();
 	timer3_init();
 	
-	while(1);
+	unsigned long t_in = 0;
+	unsigned long del_t = 0;
 	
-	//velocity (ref, ref); // 195 and 178 gave equal speeds
-	//forward();
+	learn_flag = 1;
+	TCCR4A = 0x05; // start timer 4 (to store timestamps of commands)
 	
-	/*
-	while(1)
+	while(repeat_flag != 1);
+	
+	UDR0 = 'o';
+	
+	//TCCR4A = 0x00; // stop timer 4. We'll use it here to generate delays
+	
+	for(int i = 0; i < recv_counter; i++)
 	{
-		_delay_ms(1000);	
+		TCCR4A = 0x00;
 		
-		val[0] = val[1];
-		var[0] = var[1];
+		UDR0 = recv_commands[i];
 		
-		val[1] = ShaftCountLeft;
-		var[1] = ShaftCountRight;
+		if(recv_commands[i] == 'w') //ASCII value of w
+		{
+			//PORTA=0x06;  //forward
+			forward_control(180);
+		}
+
+		if(recv_commands[i] == 'x') //ASCII value of x
+		{
+			PORTA=0x09; //back
+		}
+
+		if(recv_commands[i] == 'a') //ASCII value of a
+		{
+			PORTA=0x05;  //left
+		}
+
+		if(recv_commands[i] == 'd') //ASCII value of d
+		{
+			PORTA=0x0A; //right
+		}
 		
-		cli();
+		if(recv_commands[i] == 0x6c) //ASCII value of l
+		{
+			PORTA=0x04;  //left
+		}
+
+		if(recv_commands[i] == 0x72) //ASCII value of r
+		{
+			PORTA=0x02; //right
+		}
 		
-		ShaftCountLeft = 0;
-		ShaftCountRight = 0;
+		if(recv_commands[i] == 's') //ASCII value of s
+		{
+			PORTA=0x00; //stop
+		}
 		
-		sei();
-		
-		datal = (unsigned char) (val[1] + val[0]); // rpm = no of shaft counts per second * no of rotations per shaft count * no of seconds per minute
-												   // rpm = no of shaft counts per second * (1/30) * 60 = no of shaft counts per second * 2
-												   // the average of the 2 most recent readings are taken therefore the 2's cancel and the 
-												   // rpm is just the sum of the two most recent shaft counts
-		datar = (unsigned char) (var[1] + var[0]);
-		
-		while ( !( UCSR0A & (1<<UDRE0)) );
-		// Put data into buffer, sends the data 
+		if(recv_times[i] - t_in > 0)
+			del_t = recv_times[i] - t_in;
 			
-		UDR0 = datal;
-		
-		while ( !( UCSR0A & (1<<UDRE0)) );
+		else
+			del_t = recv_times[i] - t_in + 0xffff;
 			
-		UDR0 = datar;
+		t_in = recv_times[i];
 		
-		while ( !( UCSR0A & (1<<UDRE0)) );
+		TCNT4 = 0x00;
+		TCCR4A = 0x05;
 		
-		UDR0 = '\n';
+		while(TCNT4 < del_t);
+		
 	}
 	
-	*/
-	
-	/*while(1)
-	{
-		//_delay_ms(100);
-		
-		val[0] = val[1];
-		var[0] = var[1];
-		
-		cli();
-		
-		lvel = F_CPU / (timLeft * DIVIDER);
-		rvel = F_CPU / (timRight * DIVIDER);
-		
-		sei();
-		
-		if(rvel < lvel)
-			change++;
-		if(rvel > lvel)
-			change--;
-			
-		velocity(ref, ref + change);
-		
-		val[1] = lvel - (unsigned long) lvel > 0.5 ? ((unsigned long) lvel + 1) : (unsigned long) lvel ;
-		var[1] = rvel - (unsigned long) rvel > 0.5 ? ((unsigned long) rvel + 1) : (unsigned long) rvel ;
-		
-		datal = (unsigned char) (val[1] + val[0]);
-		datar = (unsigned char) (var[1] + var[0]);
-		
-	}
-	*/
 }
