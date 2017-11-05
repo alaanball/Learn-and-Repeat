@@ -1,0 +1,21 @@
+Problem Statement
+
+To a design a robot which can repeat a path it has already been manually navigated across
+
+Relevance
+
+Such a robot could be used to reliably move light items such as paperwork or memos from one place to another.
+
+Methodology
+
+A prototype of the robot will first be designed using a FIREBIRD(TM) robot. Once the prototype works as expected, a robot
+will be designed from scratch - this includes the selection of motors to drive the wheels, design of the power supply to 
+the motors, microcontrollers, sensors, and ICs required. The method of learning and repeating a path will be based on the
+approximating the location of the robot using the rotation of wheels. A GPS module can also be use to initialize the 
+position the bot to within a few metres of accuracy. The robot should be able able to navigate through reasonably complicated
+regions and should also be able to make adjustments to the path in case it encounters any obstacles, so the accuracy of 
+the algorithms involved will be a crucial factor. 
+
+Expected outcomes
+
+A basic working model of the robot.
